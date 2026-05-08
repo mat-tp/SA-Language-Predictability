@@ -1,7 +1,11 @@
 # Comparing Predictability of South African Languages
 
+=====================================================
+
 Author : Tshephang Matlala.
+
 Affiliation: Department of Computer Science and Software Engineering, University of Johannesburg
+
 Module : Compiler Construction
 
 Research Focus : Analyzing the **predictability of South African languages** by computing **entropy** and **perplexity** using n-gram language models.
@@ -13,8 +17,11 @@ Comparing predictability of South African languages {English, Afrikaans, Sepedi,
 - All the functionality is in the main by running (trains, and loads the results- this also trains the BPE which uses bootsraping which can take hours) :python main.py
 
 - Usage:
+
   python main.py # full run
+
   python main.py --no-bootstrap # skip bootstrap
+
   python main.py --langs english zulu # subset of languages
 
 - \_
@@ -22,6 +29,7 @@ Comparing predictability of South African languages {English, Afrikaans, Sepedi,
 ## Methodical Approach
 
 1. Text processing : Cleaning the data by removing the metadata, normalizing the text, and handling punctuations.
+
 2. Tokenization : Adapted 2 methods
 
 - Character tokenization = character sequences on the text.
