@@ -1,7 +1,7 @@
 # Comparing Predictability of South African Languages
 
-**Author:** Tshephang Matlala  
-**Affiliation:** Department of Computer Science and Software Engineering, University of Johannesburg  
+**Author:** Tshephang P-A-N Matlala (223004635)  
+**Affiliation:** Academy of Computer Science and Software Engineering, University of Johannesburg  
 **Module:** Compiler Construction
 
 **Research Focus:** Analysing the **predictability of South African languages** by computing  
@@ -113,32 +113,12 @@ Youtube Video 2 Link: \_
 
 1. Data Source : NCHLT (National Centre for Human Language Technology) corpora provided by SADiLaR
 
-@misc{20.500.12185/301,
-title = {{NCHLT} English Text Corpora},
-author = {Martin Puttkammer and Martin Schlemmer and Wikus Pienaar and Ruan Bekker},
-url = {https://hdl.handle.net/20.500.12185/301},
-note = {{SADiLaR} Language Resource Repository, License: Creative Commons Attribution 2.5 South Africa License: http://creativecommons.org/licenses/by/2.5/za/legalcode},
-year = {2016}
-}
+- @misc{20.500.12185/301, title = {{NCHLT} English Text Corpora}, author = {Martin Puttkammer and Martin Schlemmer and Wikus Pienaar and Ruan Bekker},
+  url = {https://hdl.handle.net/20.500.12185/301}, note = {{SADiLaR} Language Resource Repository, License: Creative Commons Attribution 2.5 South Africa License: http://creativecommons.org/licenses/by/2.5/za/legalcode}, year = {2016}}
 
-@misc{20.500.12185/708,
-title = {{NCHLT} Sepedi {POS} and Lemma annotated corpus},
-author = {Gaustad, Tanja},
-url = {https://hdl.handle.net/20.500.12185/708},
-note = {{SADiLaR} Language Resource Repository, License: Creative Commons Attribution 4.0 International},
-year = {2026}
-}
+- @misc{20.500.12185/708, title = {{NCHLT} Sepedi {POS} and Lemma annotated corpus}, author = {Gaustad, Tanja},
+  url = {https://hdl.handle.net/20.500.12185/708}, note = {{SADiLaR} Language Resource Repository, License: Creative Commons Attribution 4.0 International},year = {2026}}
 
-@misc{20.500.12185/701,
-title = {{isiZulu} Domain corpus {POS} annotated (5 domains)},
-author = {Gaustad, Tanja},
-url = {https://hdl.handle.net/20.500.12185/701},
-note = {{SADiLaR} Language Resource Repository, License: Creative Commons Attribution 4.0 International},
-year = {2026}
-}
+- @misc{20.500.12185/701, title = {{isiZulu} Domain corpus {POS} annotated (5 domains)},author = {Gaustad, Tanja}, url = {https://hdl.handle.net/20.500.12185/701}, note = {{SADiLaR} Language Resource Repository, License: Creative Commons Attribution 4.0 International},year = {2026}}
 
-@misc{20.500.12185/142, title = {Afrikaans Part of Speech Data},
-url = {https://hdl.handle.net/20.500.12185/142},
-note = {{SADiLaR} Language Resource Repository},
-year = {2015}
-}
+- @misc{20.500.12185/142, title = {Afrikaans Part of Speech Data},url = {https://hdl.handle.net/20.500.12185/142}, note = {{SADiLaR} Language Resource Repository},year = {2015}}
