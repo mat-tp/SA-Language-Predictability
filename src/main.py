@@ -1,258 +1,193 @@
-"""
-SA Language N-grams Comparison.
-Author: Tshephang Matlala 223004635
+""" A Comparative Study of N-Gram Predictability Across South African Languages Using Character, Word, and Subword Tokenization.
+    
+    Author : Tshephang Matlala  (223004635)
 
-Compares English, Afrikaans, Sepedi, and Zulu using n-gram models
-with multiple tokenization strategies and smoothing methods.
+    Languages : English, Afrikaans, Sepedi, Zulu  (NCHLT corpora)
+    Tokenizers: char · word · BPE (500 subwords) · BPE (2 000 subwords)
+    N-gram orders: 1 (unigram) through 5 (5-gram)
+    Metrics: cross-entropy (per-token and per-character) & perplexity
 
 """
 
 import os
 import sys
-import argparse
 import json
+import argparse
 
 from preprocess import process_data
-from tokenizer import CharTokenizer, BPETokenizer
-from language_model import build_ngram_model, generate_from_test
-from evaluate import (
-    cross_entropy_tokens,
-    cross_entropy_chars,
-    run_training_size_experiment,
-    tune_alpha,
-    evaluate_all_models,
-)
-from analysis import (
-    corpus_statistics,
-    compare_corpora,
-    domain_bias_analysis,
-)
-from visualize import (
-    plot_language_comparison,
-    plot_training_size_curves,
-    plot_heaps_law,
-    plot_model_comparison,
-    plot_domain_bias,
-    plot_smoothing_curves,
-)
+from tokenizers import CharTokenizer, WordTokenizer, BPETokenizer
+from language_model import generate_from_model
+from evaluate import evaluate_all_orders
+from visualize import plot_ngram_comparison, plot_tokenizer_comparison
 
-
+# Handling Command-line arguments
 def parse_args():
-    """Parses command-line arguments for the experiments."""
-    p = argparse.ArgumentParser(description="SA Language N-gram Experiments")
-    p.add_argument("--no-bootstrap", action="store_true",
-                   help="Skip bootstrap confidence intervals")
-    p.add_argument("--n-bootstrap", type=int, default=300,
-                   help="Number of bootstrap replicates")
-    p.add_argument("--langs", nargs="+", default=None,
-                   help="Subset of languages to process")
-    p.add_argument("--bpe-sizes", nargs="+", type=int, default=[500, 2000],
-                   help="BPE vocabulary sizes")
+    p = argparse.ArgumentParser(description="SA Language N-Gram Predictability Study")
+    p.add_argument("--langs", nargs="+", default=None, help="Run only a subset of languages, e.g. --langs english zulu")
+    p.add_argument("--max-n", type=int, default=5, help="Highest n-gram order to evaluate (default: 5)")
+    p.add_argument("--bpe-sizes", nargs="+", type=int, default=[500, 2000], help="BPE vocabulary sizes to include (default: 500 2000)")
+    p.add_argument("--no-generate", action="store_true", help="Skip the sample-text generation step")
+    
     return p.parse_args()
 
-
-def re_encode(lang_data, tok, split):
-    """Decodes a split from char ids, then re-encodes with the given tokenizer."""
-    orig_decode = lang_data["tokenizer"]["decode"]
-    text = orig_decode(lang_data[split])
-    return tok.encode(text)
-
-
-def print_banner(msg):
-    """Prints a formatted section banner."""
+# CLI Layout
+def _banner(msg):
+    """Prints a clearly visible section header to the console."""
     width = 64
     print("\n" + "=" * width)
     print(f"  {msg}")
     print("=" * width)
 
+def _re_encode(lang_data, tokenizer, split_name):
+    """Decodes char-encoded split back to text, then re-encodes."""
+    
+    original_text = lang_data["_char_decode"](lang_data[split_name])
+    return tokenizer.encode(original_text)
 
+
+def _build_tokenizers(cleaned_text, bpe_sizes):
+    """ Constructs all tokenizers for one language.
+        Returns a list in a consistent order: char -> word -> BPE variants. """
+    
+    tokenizers = [
+        CharTokenizer(cleaned_text),
+        WordTokenizer(cleaned_text),
+    ]
+    for size in bpe_sizes:
+        tokenizers.append(BPETokenizer(cleaned_text, vocab_size=size))
+    return tokenizers
+
+# Entry point
 def main():
     args = parse_args()
     os.makedirs("results", exist_ok=True)
 
-    print_banner("SA Language N-grams")
+    _banner("SA Language N-Gram Study")
 
-    # Loading data
+    # Load corpora
+    _banner("Loading Corpora")
     data = process_data()
+
+    # restrict to a subset of languages
     if args.langs:
         data = {k: v for k, v in data.items() if k in args.langs}
         if not data:
-            print(f"ERROR: No matching languages for {args.langs}")
+            print(f"  ERROR: None of {args.langs} were found in the loaded data.")
             sys.exit(1)
 
-    # Corpus statistics and Heaps law
-    print_banner("Corpus Statistics And Heap's Law")
-    all_stats = []
-    bias_results = []
-    tuning_data = {}
+    if not data:
+        print("  ERROR: No language data loaded.  Check your data directory.")
+        sys.exit(1)
 
-    for lang, ld in data.items():
-        stats = corpus_statistics(
-            lang,
-            tokens_train=ld["train"],
-            tokens_val=ld["val"],
-            tokens_test=ld["test"],
-            tokenizer_name="char",
-            cleaned_text=ld["cleaned_text"],
-        )
-        all_stats.append(stats)
-        bias_results.append(domain_bias_analysis(lang, ld["train"]))
+    # Train and evaluate
+    _banner("Training and Evaluation")
 
-    compare_corpora(all_stats)
-    plot_heaps_law(all_stats, save_path=os.path.join("results", "heaps_law.png"))
-    plot_domain_bias(bias_results, save_path=os.path.join("results", "domain_bias.png"))
+    # all_results collects one dict per (language, tokenizer) pair.
+    # Each dict stores the results for every n-gram order.
+    all_results = []
 
-    # Per-language per-tokenizer experiments
-    print_banner("Model Training & Evaluation")
-
-    bar_chart_results = []
-    results_by_lang = {}
-
-    for lang, ld in data.items():
+    for lang, lang_data in data.items():
         print(f"\n{'─' * 60}")
         print(f"  {lang.upper()}")
         print(f"{'─' * 60}")
 
-        char_tok = CharTokenizer(ld["cleaned_text"])
-        bpe_tokenizers = [
-            BPETokenizer(ld["cleaned_text"], vocab_size=sz, name_tag=f"{lang}_{sz}")
-            for sz in args.bpe_sizes
-        ]
-        tokenizers = [char_tok] + bpe_tokenizers
-        tuning_data[lang] = {}
+        tokenizers = _build_tokenizers(lang_data["cleaned_text"], args.bpe_sizes)
 
         for tok in tokenizers:
-            print(f"\n  [Tokenizer: {tok.name}]  vocab={tok.vocab_size}")
+            print(f"\n  Tokenizer: {tok.name}  (vocab size = {tok.vocab_size:,})")
 
-            train_enc = re_encode(ld, tok, "train")
-            val_enc = re_encode(ld, tok, "val")
-            test_enc = re_encode(ld, tok, "test")
-            vsize = tok.vocab_size
+            # Re-encode the train / val / test splits for this tokenizer
+            train = _re_encode(lang_data, tok, "train")
+            val = _re_encode(lang_data, tok, "val")
+            test = _re_encode(lang_data, tok, "test")
 
-            # Alpha tuning with detailed logging
-            alphas_to_try = [0.001, 0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0]
-            for n_ord in (2, 3):
-                model_tmp = build_ngram_model(train_enc, n=n_ord, vocab_size=vsize)
-                ents = [cross_entropy_tokens(val_enc, model_tmp, alpha=a)
-                        for a in alphas_to_try]
-                tuning_data[lang].setdefault(n_ord, {})[tok.name] = {
-                    "alphas": alphas_to_try, "entropies": ents
-                }
+            print(f"  Tokens — train: {len(train):,}  val: {len(val):,}  test: {len(test):,}")
 
-            alpha2 = tune_alpha(train_enc, val_enc, vsize, n=2, alphas=alphas_to_try)
-            alpha3 = tune_alpha(train_enc, val_enc, vsize, n=3, alphas=alphas_to_try)
-
-            # Evaluate all model variants
-            print(f"\n  Evaluating all models …")
-            model_results = evaluate_all_models(
-                train_enc, val_enc, test_enc, vsize, tok,
-                run_bootstrap=(not args.no_bootstrap),
-                n_bootstrap=args.n_bootstrap,
+            # Evaluate n=1..max_n, including alpha tuning
+            order_results = evaluate_all_orders(
+                train_tokens = train,
+                val_tokens = val,
+                test_tokens = test,
+                vocab_size = tok.vocab_size,
+                tokenizer = tok,
+                max_n = args.max_n,
             )
 
-            # Store char tokenizer results for cross-language comparison
-            if tok.name == "char":
-                results_by_lang[lang] = model_results
-                mr = model_results
-
-                def get_metric(key, model_name):
-                    return mr[model_name].get(key, float("nan"))
-
-                bar_chart_results.append({
-                    "lang": lang,
-                    "tokenizer": tok.name,
-                    "entropy2": get_metric("entropy_token", "bigram_laplace"),
-                    "entropy3": get_metric("entropy_token", "trigram_laplace"),
-                    "perplexity2": get_metric("perplexity_token", "bigram_laplace"),
-                    "perplexity3": get_metric("perplexity_token", "trigram_laplace"),
-                    "entropy2_char": get_metric("entropy_char", "bigram_laplace"),
-                    "entropy3_char": get_metric("entropy_char", "trigram_laplace"),
-                    "perplexity2_char": get_metric("perplexity_char", "bigram_laplace"),
-                    "perplexity3_char": get_metric("perplexity_char", "trigram_laplace"),
-                    "ci_token_2": mr["bigram_laplace"].get("ci_token"),
-                    "ci_token_3": mr["trigram_laplace"].get("ci_token"),
-                    "ci_char_2": mr["bigram_laplace"].get("ci_char"),
-                    "ci_char_3": mr["trigram_laplace"].get("ci_char"),
-                })
-
-            # Training-size experiment
-            print(f"\n  Training-size experiment (trigram, alpha={alpha3:.4f}) …")
-            exp = run_training_size_experiment(
-                train_enc, test_enc, vsize, tok, n=3, alpha=alpha3, seed=42,
-            )
-            plot_training_size_curves(
-                exp,
-                title=f"{lang.upper()} – {tok.name} (trigram)",
-                save_path=os.path.join("results", f"train_size_{lang}_{tok.name}.png"),
-            )
-
-    # Cross-language plots
-    print_banner("Cross-Language Comparison Plots")
-
-    for metric in ("entropy", "perplexity"):
-        for norm in ("token", "char"):
-            plot_language_comparison(
-                bar_chart_results, metric=metric, token_norm=norm,
-                save_path=os.path.join("results", f"comparison_{metric}_{norm}.png"),
-            )
-
-    for metric_key in ("entropy_token", "entropy_char",
-                       "perplexity_token", "perplexity_char"):
-        plot_model_comparison(
-            results_by_lang, metric=metric_key,
-            save_path=os.path.join("results", f"model_comparison_{metric_key}.png"),
-        )
-
-    # Smoothing curves
-    sc_data = {}
-    for lang, ord_dict in tuning_data.items():
-        sc_data[lang] = {}
-        for n_ord, tok_dict in ord_dict.items():
-            char_entry = tok_dict.get("char")
-            if char_entry:
-                sc_data[lang][n_ord] = char_entry
-
-    plot_smoothing_curves(sc_data,
-                          save_path=os.path.join("results", "smoothing_curves.png"))
+            # Store alongside the language and tokenizer labels
+            record = {"lang": lang, "tokenizer": tok.name}
+            record.update(order_results)
+            all_results.append(record)
 
     # Save results
-    print_banner("Saving Results")
+    _banner("Saving Results")
 
-    for s in all_stats:
-        s.pop("heaps_ns", None)
-        s.pop("heaps_vs", None)
-
-    summary = {
-        "corpus_stats": all_stats,
-        "bias_analysis": [{k: v for k, v in b.items()
-                           if k not in ("top_n_types",)} for b in bias_results],
-        "model_results": {
-            lang: {
-                mname: {k: v for k, v in mres.items() if not isinstance(v, tuple)}
-                for mname, mres in lang_res.items()
-            }
-            for lang, lang_res in results_by_lang.items()
-        },
-    }
+    # Convert int keys to strings so json.dump can handle them
+    serialisable = []
+    for r in all_results:
+        entry = {"lang": r["lang"], "tokenizer": r["tokenizer"]}
+        for k, v in r.items():
+            if isinstance(k, int):
+                entry[str(k)] = v
+        serialisable.append(entry)
 
     summary_path = os.path.join("results", "summary.json")
-    with open(summary_path, "w") as f:
-        json.dump(summary, f, indent=2, default=lambda x: None)
-    print(f"  Results written to {summary_path}")
+    with open(summary_path, "w", encoding="utf-8") as f:
+        json.dump(serialisable, f, indent=2)
+    print(f"  Results saved to {summary_path}")
 
-    print_banner("All experiments complete. Results saved to results/")
+    # Plot results
+    _banner("Generating Plots")
 
-    print("\n--- Generating Sample Text ---")
-    for lang, lang_data in results_by_lang.items():
-        # Generating from a trained trigram model
-        trained_model = lang_data["models"]["trigram_laplace"] 
-    
-        generate_from_test(
-            lang=lang,lang_data=lang_data,
-            model=trained_model,
-            max_new_tokens=50, 
-            seed=42 # Using the seed we added earlier for reproducibility
+    # For the n-gram comparison we only use char tokenizer results
+    # (char is the common baseline across all languages)
+    char_results = [r for r in all_results if r["tokenizer"] == "char"]
+
+    for metric in ("entropy_token", "entropy_char", "perplexity_token", "perplexity_char"):
+        plot_ngram_comparison(
+            char_results,
+            metric=metric,
+            save_path=os.path.join("results", f"ngram_comparison_{metric}.png"),
         )
+
+    # Tokenizer comparison: use trigram (n=3) as a representative order and per-character entropy as the fair cross-tokenizer metric
+    for n_order in (2, 3, 5):
+        plot_tokenizer_comparison(
+            all_results,
+            metric="entropy_char",
+            n_order=n_order,
+            save_path=os.path.join("results", f"tokenizer_comparison_n{n_order}.png"),
+        )
+
+    # Generate sample text (qualitative inspection)
+    if not args.no_generate:
+        _banner("Sample Text Generation  (trigram, char tokenizer)")
+        for lang, lang_data in data.items():
+            # Rebuild the char tokenizer and trigram model for generation
+            char_tok  = CharTokenizer(lang_data["cleaned_text"])
+            train_enc = _re_encode(lang_data, char_tok, "train")
+
+            from language_model import build_ngram_model
+            model = build_ngram_model(train_enc, n=3, vocab_size=char_tok.vocab_size)
+
+            # Retrieve the best alpha found during evaluation
+            lang_record = next(
+                (r for r in all_results
+                 if r["lang"] == lang and r["tokenizer"] == "char"),
+                None
+            )
+            alpha = lang_record[3]["alpha"] if lang_record and 3 in lang_record else 0.1
+
+            generate_from_model(
+                lang       = lang,
+                lang_data  = lang_data,
+                model      = model,
+                tokenizer  = char_tok,
+                max_new_tokens = 80,
+                seed       = 42,
+                alpha      = alpha,
+            )
+
+    _banner("Done : all results saved to results/")
 
 if __name__ == "__main__":
     main()

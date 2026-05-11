@@ -1,5 +1,8 @@
-/docs/
-/Data/
-/results/
+docs/
+Data/
+
+# ignore cache files
+
+__pycache__
 
 

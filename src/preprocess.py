@@ -1,28 +1,27 @@
-"""
-Character-level preprocessing for NCHLT South African language corpora.
-Supports English, Afrikaans, Sepedi, Zulu.
-Keeps meaningful punctuation (. , ! ? - ') and removes noise.
-"""
+""" Loads and cleans the 4 NCHLT South African language corpora (English, Afrikaans, Sepedi, Zulu), then splits each one into
+train / validation / test sets. """
 
 import re
 import os
 from pathlib import Path
-from util import split_data
 
-# Allows overriding the data directory via environment variable for reproducibility
+# Corpus file paths
 BASE_DATA_DIR = Path(os.getenv("NCHLT_DATA_DIR", "Data/South_African Languages"))
 
 LANGUAGES = {
-    "english": BASE_DATA_DIR / "corpora.nchlt.en/en/1.Corpus/CORP.NCHLT.eng.CLEAN.1.0.0.txt",
+    "english":   BASE_DATA_DIR / "corpora.nchlt.en/en/1.Corpus/CORP.NCHLT.eng.CLEAN.1.0.0.txt",
     "afrikaans": BASE_DATA_DIR / "corpora.nchlt.af/af/2.Corpora/CORP.NCHLT.af.CLEAN.2.0.txt",
-    "sepedi": BASE_DATA_DIR / "corpora.nchlt.nso/nso/2.Corpora/CORP.NCHLT.nso.CLEAN.2.0.txt",
-    "zulu": BASE_DATA_DIR / "corpora.nchlt.zu/zu/2.Corpora/CORP.NCHLT.zu.CLEAN.2.0.txt",
+    "sepedi":    BASE_DATA_DIR / "corpora.nchlt.nso/nso/2.Corpora/CORP.NCHLT.nso.CLEAN.2.0.txt",
+    "zulu":      BASE_DATA_DIR / "corpora.nchlt.zu/zu/2.Corpora/CORP.NCHLT.zu.CLEAN.2.0.txt",
 }
 
-def remove_metadata(text):
-    """Strips corpus header lines — keeps only content after the first <fn> tag."""
+
+# Text cleaning helpers
+def _remove_metadata(text):
+    """ The NCHLT files start with header lines enclosed in <fn>…</fn> tags. This function skips everything up to and including those tags,
+    returning only the actual corpus sentences. """
     lines = text.split("\n")
-    clean_lines = []
+    body_lines = []
     past_header = False
 
     for line in lines:
@@ -33,80 +32,94 @@ def remove_metadata(text):
             past_header = True
             continue
         if past_header:
-            clean_lines.append(line)
+            body_lines.append(line)
 
-    return "\n".join(clean_lines)
+    return "\n".join(body_lines)
+
 
 def clean_text(text):
-    """
-    Normalizes raw corpus text to a clean string.
-    Lowercases, removes control characters, separates sentence-ending punctuation,
-    and keeps only letters, spaces, and selected punctuation.
-    """
+    """ Normalises raw corpus text into a clean, lowercase string. """
+
     text = text.lower()
 
-    # Remove control characters and metadata tags
-    text = re.sub(r"[\x00-\x1F\x7F\x80-\x9F]", " ", text)
-    text = re.sub(r"_+", " ", text)
-    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"[\x00-\x1F\x7F\x80-\x9F]", " ", text)  # Remove ASCII control characters and a common Windows-1252 range
+    text = re.sub(r"_+", " ", text) # remove the underscores
+    text = re.sub(r"<[^>]+>", " ", text) # Remove any XML/HTML tags
+    text = re.sub(r"([.!?])", r" \1 ", text) # Pad sentence-ending punctuation so it splits cleanly as its own word
 
-    # Separate sentence-ending punctuation so it becomes a distinct token
-    text = re.sub(r"([.!?])", r" \1 ", text)
+    # Keep only valid characters: Unicode letters, spaces, and the punctuation
+    # set ' , - ! ? .
+    allowed = " ',-\!?."
+    filtered = []
+    for ch in text:
+        if ch.isalpha() or ch.isspace() or ch in allowed:
+            filtered.append(ch)
+    text = "".join(filtered)
 
-    # Keep only lowercase letters (including diacritics), space, and selected punctuation
-    text = re.sub(r"[^a-zà-ü ',\-!?.]", "", text, flags=re.UNICODE)
-
-    # Collapse multiple whitespaces into a single space
+    # Collapse multiple spaces
     return re.sub(r" +", " ", text).strip()
 
-def build_tokenizer(chars):
-    """Builds a character-level tokenizer from a sorted character list."""
-    stoi = {ch: i for i, ch in enumerate(chars)}
-    itos = {i: ch for i, ch in enumerate(chars)}
+# Train / val / test splits
+def split_data(encoded_tokens, train_ratio=0.8, val_ratio=0.1):
+    """ Splits a list of token ids into train, validation, and test portions. Default split: 80 % train : 10 % val : 10 % test."""
 
-    return {
-        "stoi": stoi,
-        "itos": itos,
-        "encode": lambda s: [stoi[c] for c in s],
-        "decode": lambda indices: "".join(itos[i] for i in indices),
-        "vocab_size": len(chars),
-    }
+    n = len(encoded_tokens)
+    train_end = int(n * train_ratio)
+    val_end   = train_end + int(n * val_ratio)
 
+    train = encoded_tokens[:train_end]
+    val   = encoded_tokens[train_end:val_end]
+    test  = encoded_tokens[val_end:]
+
+    return train, val, test
+
+# Character encoding and decoding methods 
+
+def _make_encoder(stoi):
+    return lambda s: [stoi[c] for c in s]
+
+
+def _make_decoder(itos):
+    return lambda ids: "".join(itos[i] for i in ids)
+
+# Main entry point
 def process_data():
-    """Loads, cleans, tokenizes, and splits every language corpus. Returns a dictionary keyed by language."""
+    """ Loading every language corpus, cleans the text, character-level encoding. """
     results = {}
 
     for lang, path in LANGUAGES.items():
         if not path.exists():
-            print(f"[WARNING] File not found: {path}. Check your BASE_DATA_DIR.")
+            print(f"  [WARNING] File not found: {path}")
+            print(f"            Set NCHLT_DATA_DIR to your data root and retry.")
             continue
 
         print(f"  Loading {lang} …")
         with open(path, encoding="utf-8") as f:
             raw_text = f.read()
 
-        cleaned_text = clean_text(remove_metadata(raw_text))
-        chars = sorted(set(cleaned_text))
-        tokenizer = build_tokenizer(chars)
-        
-        encoded = tokenizer["encode"](cleaned_text)
+        cleaned = clean_text(_remove_metadata(raw_text))
+        char_vocab = sorted(set(cleaned))
+
+        stoi = {ch: i for i, ch in enumerate(char_vocab)}
+        itos = {i: ch for i, ch in enumerate(char_vocab)}
+
+        encode = _make_encoder(stoi)
+        decode = _make_decoder(itos)
+
+        encoded = encode(cleaned)
         train, val, test = split_data(encoded)
 
-        print(f"\n{lang.upper():<12} vocab={len(chars):>3}  "
+        print(f"  {lang.upper():<12}  vocab={len(char_vocab):>3}  "
               f"train={len(train):,}  val={len(val):,}  test={len(test):,}")
 
         results[lang] = {
-            "cleaned_text": cleaned_text,
-            "stats": {
-                "raw_length": len(raw_text),
-                "clean_length": len(cleaned_text),
-                "chars": chars,
-                "vocab_size": len(chars),
-            },
-            "tokenizer": tokenizer,
+            "cleaned_text": cleaned,
+            "char_vocab":   char_vocab,
             "train": train,
-            "val": val,
-            "test": test,
+            "val":   val,
+            "test":  test,
+            "_char_encode": encode,
+            "_char_decode": decode,
         }
 
     return results

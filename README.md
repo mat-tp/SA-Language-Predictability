@@ -1,46 +1,83 @@
 # Comparing Predictability of South African Languages
 
-=====================================================
+**Author:** Tshephang Matlala  
+**Affiliation:** Department of Computer Science and Software Engineering, University of Johannesburg  
+**Module:** Compiler Construction
 
-Author : Tshephang Matlala.
+**Research Focus:** Analysing the **predictability of South African languages** by computing  
+**entropy** and **perplexity** with n‑gram language models.
 
-Affiliation: Department of Computer Science and Software Engineering, University of Johannesburg
+The study compares English, Afrikaans, Sepedi, and isiZulu, asking how morphological  
+structure affects predictability across languages.
 
-Module : Compiler Construction
+---
 
-Research Focus : Analyzing the **predictability of South African languages** by computing **entropy** and **perplexity** using n-gram language models.
+## What this project does
 
-Comparing predictability of South African languages {English, Afrikaans, Sepedi, and isiZulu}. The goal is to compare how morphological structure of the languages are between languages.
+- Loads the NCHLT corpora for four South African languages.
+- Applies three tokenization strategies: **character**, **word**, and **subword (BPE)**.
+- Trains n‑gram language models from n = 1 (unigram) up to n = 5 (5‑gram).
+- Uses only **Add‑alpha (Laplace) smoothing** (α tuned on a validation set).
+- Evaluates models with **per‑token** and **per‑character cross‑entropy** and **perplexity**.
+- Provides both a **command‑line script** (`main.py`) and a **graphical desktop app** (`run.py`) that works with any plain‑text corpus.
+
+---
+
+## Project's library requirements
+
+- They are stored in the `requirements.txt` file.
+
+```bash
+  pip install -r requirements.txt
+```
+
+---
 
 ## Running the application
 
-- All the functionality is in the main by running (trains, and loads the results- this also trains the BPE which uses bootsraping which can take hours) :python main.py
-
 - Usage:
 
-  python main.py # full run
+1. For running on Graphical user interface
 
-  python main.py --no-bootstrap # skip bootstrap
+```bash
+  python run.py
+```
 
-  python main.py --langs english zulu # subset of languages
+2. For running on Command line interface
 
-- \_
+```bash
+  python main.py
+```
 
-## Methodical Approach
+3. Customizing the CLI - Providing arguments for selection of languages, N for n-gram, BPE-sizes [int]
 
-1. Text processing : Cleaning the data by removing the metadata, normalizing the text, and handling punctuations.
+```bash
+      python main.py --help
+```
 
-2. Tokenization : Adapted 2 methods
+## Methodical approach
 
-- Character tokenization = character sequences on the text.
-- Sub-word tokenization = Using Byte Pair Encoding
+1. Text cleaning : Remove metadata, lower‑case, handle punctuation, keep only desired characters.
 
-3. Smoothing methods : Handling zero probabilities
+2. Tokenization : Three strategies are applied independently to each language:
 
-- Laplace (Add- alpha)
-- Kneser-Ney Smoothing
+- Character – each unique character is a token.
 
-4. Evaluated using sliding window approach on the test set.
+- Word – whitespace‑separated words (closed vocabulary).
+
+- Byte‑Pair Encoding (BPE) – subword tokens learned from the training text (vocabulary size configurable). Reference: Sennrich et al. (2016) "Neural Machine Translation of Rare Words with Subword Units". ACL 2016.
+
+3. Data splitting – The encoded sequence is split into train (80%) / validation (10%) / test (10%), with no shuffling to preserve order and reproducibility.
+
+4. Model training – For each tokenizer and n‑gram order (1–5), an n‑gram count‑based model is built.
+
+5. Smoothing – Only Add‑alpha (Laplace) smoothing is used. The α coefficient is tuned on the validation set by testing values {0.001, 0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0} and picking the one that minimises validation entropy.
+
+6. Evaluation – The trained models are evaluated on the held‑out test set. Two normalised metrics are reported:
+
+- Per‑token cross‑entropy / perplexity
+
+- Per‑character cross‑entropy / perplexity (the only fair comparison across tokenizers of different granularities)
 
 ---
 
@@ -48,25 +85,26 @@ Comparing predictability of South African languages {English, Afrikaans, Sepedi,
 
 #### Cross-Entropy (H)
 
+- Average information (bits) needed to predict the next token. Lower = more predictable.
+
 - Measures the information from 2 probabilities.
 
 #### Perplexity (PPL)
 
+- 2^H; the effective number of equally likely choices the model considers at each step. Lower = better model.
+
 - Measure how confused a model is in predicting the next word.
-
-#### Zipf's Law Analysis
-
-- Helps in evaluating distribution of word frequencies across different languages.
 
 ---
 
 ## Results
 
-Here is a breakdown of the results.
+The key finding is that BPE subword tokenization (vocab size 500) yields the lowest per‑character entropy for all four languages, making it the most efficient choice for n‑gram modelling across these typologically diverse South African languages.
 
 ---
 
 YouTube Video 1 Link: https://youtu.be/gP3JngH-Sio
+
 Youtube Video 2 Link: \_
 
 ---
@@ -83,4 +121,24 @@ note = {{SADiLaR} Language Resource Repository, License: Creative Commons Attrib
 year = {2016}
 }
 
-More Reference for other languages...
+@misc{20.500.12185/708,
+title = {{NCHLT} Sepedi {POS} and Lemma annotated corpus},
+author = {Gaustad, Tanja},
+url = {https://hdl.handle.net/20.500.12185/708},
+note = {{SADiLaR} Language Resource Repository, License: Creative Commons Attribution 4.0 International},
+year = {2026}
+}
+
+@misc{20.500.12185/701,
+title = {{isiZulu} Domain corpus {POS} annotated (5 domains)},
+author = {Gaustad, Tanja},
+url = {https://hdl.handle.net/20.500.12185/701},
+note = {{SADiLaR} Language Resource Repository, License: Creative Commons Attribution 4.0 International},
+year = {2026}
+}
+
+@misc{20.500.12185/142, title = {Afrikaans Part of Speech Data},
+url = {https://hdl.handle.net/20.500.12185/142},
+note = {{SADiLaR} Language Resource Repository},
+year = {2015}
+}
